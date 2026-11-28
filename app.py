@@ -27,6 +27,9 @@ ORIGIN = os.environ.get("RV_ORIGIN", "http://127.0.0.1:8000")
 DEMO = os.environ.get("RV_DEMO") == "1"
 CONTACT_ENABLED = os.environ.get("RV_CONTACT_ENABLED") == "1"
 PRIVACY = os.environ.get("RV_PRIVACY_TEXT", "").strip()
+MANAGEMENT = DEMO or os.environ.get("RV_STAGING") == "1" or bool(
+    PRIVACY and os.environ.get("RV_MANAGEMENT_ENABLED") == "1"
+)
 if len(SECRET) < 32 or len(ADMIN) < 16:
     raise RuntimeError("Configurá RV_SECRET (32 caracteres) y RV_ADMIN_PASSWORD (16 caracteres).")
 if not DEMO and not ORIGIN.startswith("https://"):
@@ -246,6 +249,7 @@ def moderate(data):
 def read_api(env, path):
     if path == "/api/config":
         return {"privacy": PRIVACY or ("Modo de pruebas. Usá datos ficticios." if DEMO else ""),
+                "management": MANAGEMENT,
                 "contact": bool(DEMO or (CONTACT_ENABLED and PRIVACY)),
                 "verification": bool(DEMO or (PRIVACY and os.environ.get("RV_SMTP_HOST") and os.environ.get("RV_SMTP_FROM")))}
     with database() as db:
@@ -280,6 +284,8 @@ def read_api(env, path):
             return {"reports": [public_report(db, row) for row in db.execute(
                         """SELECT id, created, category, locality, place, description, name, email, visibility,
                                status, official_ref, official_agency FROM reports ORDER BY created DESC""")],
+                    "management": [dict(row) for row in db.execute(
+                        "SELECT * FROM management_requests ORDER BY created DESC")],
                     "contacts": [dict(row) for row in db.execute("SELECT * FROM contacts ORDER BY created DESC")]}
     raise Problem("404 Not Found", "Página no encontrada.")
 
@@ -302,6 +308,19 @@ def write_api(env, path, headers):
             result["history"] = [dict(item) for item in db.execute(
                 "SELECT created,status,agency,ref FROM updates WHERE report=? ORDER BY created DESC,id DESC", (report,))]
             return result
+    if path == "/api/management":
+        require(MANAGEMENT, "La solicitud de gestión todavía no está habilitada.", "503 Service Unavailable")
+        limit("management:" + ip, 8)
+        require(data.get("consent") is True, "Autorizá la gestión para enviar la solicitud.")
+        report = field(data, "id", 32, 32)
+        key = digest("tracking:" + field(data, "key", 80, 16))
+        address = email(data)
+        with database() as db:
+            require(db.execute("SELECT 1 FROM reports WHERE id=? AND tracking=?", (report, key)).fetchone(),
+                    "Identificador o clave de seguimiento inválidos.", "404 Not Found")
+            saved = db.execute("""INSERT INTO management_requests (report,created,email) VALUES (?,?,?)
+                ON CONFLICT DO NOTHING""", (report, int(time.time()), address)).rowcount == 1
+        return {"saved": saved}
     if path == "/api/contact":
         require(DEMO or (CONTACT_ENABLED and PRIVACY), "La solicitud de contacto todavía no está habilitada.", "503 Service Unavailable")
         limit("contact:" + ip, 5)
@@ -345,6 +364,14 @@ def write_api(env, path, headers):
         if path == "/api/admin/redact":
             with database() as db:
                 db.execute("UPDATE reports SET name=NULL, email=NULL WHERE id=?", (field(data, "id", 32, 32),))
+            return {}
+        if path == "/api/admin/management":
+            report = field(data, "id", 32, 32)
+            with database() as db:
+                if data.get("delete") is True:
+                    db.execute("DELETE FROM management_requests WHERE report=?", (report,))
+                else:
+                    db.execute("UPDATE management_requests SET handled=1 WHERE report=?", (report,))
             return {}
         if path == "/api/admin/contact":
             with database() as db:

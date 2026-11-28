@@ -82,6 +82,18 @@ class PlatformTest(unittest.TestCase):
         track, _ = call("track", report)
         self.assertEqual(track["history"][0]["ref"], review["ref"])
 
+        management = {**report, "email": "gestion@example.com", "consent": True}
+        call("management", {**management, "key": "incorrecta-123456789"}, expected=404)
+        call("management", {**management, "consent": False}, expected=400)
+        self.assertTrue(call("management", management)[0]["saved"])
+        self.assertFalse(call("management", management)[0]["saved"])
+        self.assertNotIn("gestion@example.com", json.dumps(call("reports")[0]))
+        call("admin/management", {"id": report["id"]}, expected=401)
+        call("admin/management", {"id": report["id"]}, session=True)
+        self.assertEqual(call("admin", session=True)[0]["management"][0]["handled"], 1)
+        call("admin/management", {"id": report["id"], "delete": True}, session=True)
+        self.assertEqual(call("admin", session=True)[0]["management"], [])
+
         voter = "vecino@example.com"
         def code():
             call("code", {"email": voter})

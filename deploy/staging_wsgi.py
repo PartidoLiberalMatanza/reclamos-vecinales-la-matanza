@@ -15,7 +15,7 @@ if not isinstance(stage_password, str) or len(stage_password) < 24:
     raise RuntimeError("La clave de acceso a la prueba debe tener al menos 24 caracteres.")
 for name in ("RV_ORIGIN", "RV_DATA", "RV_SECRET", "RV_ADMIN_PASSWORD"):
     os.environ[name] = settings[name]
-os.environ.update(RV_DEMO="0", RV_CONTACT_ENABLED="0", RV_PRIVACY_TEXT="")
+os.environ.update(RV_DEMO="0", RV_STAGING="1", RV_CONTACT_ENABLED="0", RV_PRIVACY_TEXT="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app import application as platform
 

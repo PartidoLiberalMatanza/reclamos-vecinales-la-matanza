@@ -141,6 +141,14 @@ async function submitReport() {
         output.textContent = "Recibido. Guardá estos datos para consultar el trámite.\nIdentificador: " +
             result.id + "\nClave privada: " + result.key;
         output.append(document.createElement("br"), link("seguimiento", "Ir a seguimiento"));
+        const management = byId("rv-management-form");
+        management.reset();
+        management.elements.id.value = result.id;
+        management.elements.key.value = result.key;
+        management.querySelector('[role="status"]').textContent = "";
+        const request = button("Solicitar nuestra gestión");
+        request.onclick = openManagement;
+        output.append(document.createElement("br"), request);
         byId("rv-name").value = "";
         byId("rv-email").value = "";
         byId("rv-consent").checked = false;
@@ -149,6 +157,14 @@ async function submitReport() {
     } finally {
         button.disabled = false;
     }
+}
+
+function openManagement() {
+    const form = byId("rv-management-form");
+    form.hidden = false;
+    byId("rv-request-management").setAttribute("aria-expanded", "true");
+    byId("rv-management").scrollIntoView({block: "center"});
+    form.elements.email.focus();
 }
 
 function onForm(form, action) {
@@ -312,7 +328,36 @@ async function admin(version = routeVersion) {
         };
         output.append(exit, element("h3", "Reclamos", "section-title"));
         if (!data.reports.length) output.append(element("p", "Todavía no hay reclamos."));
-        output.append(...data.reports.map(moderationForm), element("h3", "Solicitudes de Sumate", "section-title"));
+        output.append(...data.reports.map(moderationForm));
+        output.append(element("h3", "Solicitudes de gestión", "section-title"));
+        if (!data.management.length) output.append(element("p", "Todavía no hay solicitudes de gestión."));
+        for (const item of data.management) {
+            const row = element("div", undefined, "mini");
+            const done = button(item.handled ? "Atendida" : "Marcar como atendida");
+            done.disabled = Boolean(item.handled);
+            done.onclick = async () => {
+                try {
+                    await api("admin/management", {id: item.report});
+                    done.disabled = true;
+                    done.textContent = "Atendida";
+                } catch (error) {
+                    row.append(element("p", error.message));
+                }
+            };
+            const remove = button("Eliminar solicitud");
+            remove.onclick = async () => {
+                if (!window.confirm("¿Eliminar esta solicitud de gestión?")) return;
+                try {
+                    await api("admin/management", {id: item.report, delete: true});
+                    row.remove();
+                } catch (error) {
+                    row.append(element("p", error.message));
+                }
+            };
+            row.append(element("p", item.report + " · " + item.email), done, remove);
+            output.append(row);
+        }
+        output.append(element("h3", "Solicitudes de Sumate", "section-title"));
         if (!data.contacts.length) output.append(element("p", "Todavía no hay solicitudes."));
         for (const item of data.contacts) {
             const row = element("div", undefined, "mini");
@@ -404,6 +449,13 @@ byId("form").addEventListener("categoryreset", () => {
     }
 });
 byId("rv-submit").onclick = submitReport;
+byId("rv-request-management").onclick = openManagement;
+byId("form").addEventListener("categoryreset", () => byId("rv-management-form").reset());
+onForm(byId("rv-management-form"), async (data, form) => {
+    const result = await api("management", {...data, consent: data.consent === "on"});
+    form.reset();
+    return result.saved ? "Recibimos tu solicitud de gestión." : "Este reclamo ya tiene una solicitud de gestión.";
+});
 
 onForm(byId("rv-contact"), async (data, form) => {
     await api("contact", {email: data.email, locality: value("p-localidad"), consent: data.consent === "on"});
@@ -429,6 +481,10 @@ onForm(byId("rv-login"), async (data, form) => {
 window.addEventListener("hashchange", route);
 api("config").then(result => {
     config = result;
+    byId("rv-management-form").querySelector('button[type="submit"]').disabled = !config.management;
+    byId("rv-management-privacy").textContent = config.management
+        ? config.privacy || "Prueba privada. Usá un correo ficticio."
+        : "La recepción de solicitudes de gestión todavía no está habilitada.";
     for (const p of document.querySelectorAll(".rv-privacy")) {
         p.textContent = config.privacy || "La recepción de datos de contacto todavía no está habilitada.";
     }
