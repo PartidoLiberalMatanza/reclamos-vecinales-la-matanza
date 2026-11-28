@@ -131,16 +131,17 @@ def submit_report(data):
     pictures = data.get("photos", [])
     require(isinstance(pictures, list) and len(pictures) <= 3, "Adjuntá hasta tres fotografías.")
     images = [photo(value) for value in pictures]
-    report, key = uuid.uuid4().hex, secrets.token_urlsafe(24)
+    report, key = uuid.uuid4().hex, f"{secrets.randbelow(1_000_000):06d}"
     with database() as db:
         db.execute("""INSERT INTO reports
             (id, created, category, locality, place, description, latitude, longitude, name, email, tracking)
             VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (report, int(time.time()), category, locality, place, description, round(lat, 3), round(lon, 3),
-             name, address, digest("tracking:" + key)))
+             name, address, digest(f"pin:{report}:{key}")))
+        number = db.execute("INSERT INTO report_numbers (report) VALUES (?)", (report,)).lastrowid
         db.executemany("INSERT INTO photos VALUES (?,?,?)",
                        [(uuid.uuid4().hex, report, image) for image in images])
-    return {"id": report, "key": key}
+    return {"id": report, "reference": f"MZ-{number:04d}", "key": key}
 
 PUBLIC_COLUMNS = "id, created, category, locality, place, description, latitude, longitude, status"
 COUNT_SUPPORTS = "(SELECT count(*) FROM supports WHERE report=reports.id) AS supports"
@@ -283,11 +284,39 @@ def read_api(env, path):
             require(is_admin(env), "Ingresá al panel privado.", "401 Unauthorized")
             return {"reports": [public_report(db, row) for row in db.execute(
                         """SELECT id, created, category, locality, place, description, name, email, visibility,
-                               status, official_ref, official_agency FROM reports ORDER BY created DESC""")],
+                               status, official_ref, official_agency,
+                               (SELECT printf('MZ-%04d',number) FROM report_numbers
+                                WHERE report=reports.id) AS reference
+                               FROM reports ORDER BY created DESC""")],
                     "management": [dict(row) for row in db.execute(
-                        "SELECT * FROM management_requests ORDER BY created DESC")],
+                        """SELECT management_requests.*,
+                               (SELECT printf('MZ-%04d',number) FROM report_numbers
+                                WHERE report_numbers.report=management_requests.report) AS reference
+                               FROM management_requests ORDER BY created DESC""")],
                     "contacts": [dict(row) for row in db.execute("SELECT * FROM contacts ORDER BY created DESC")]}
     raise Problem("404 Not Found", "Página no encontrada.")
+
+def resolve_receipt(data):
+    reference = field(data, "id", 32, 1).upper()
+    key = field(data, "key", 80, 1)
+    short = re.fullmatch(r"MZ[ -]?([0-9]{1,12})", reference)
+    with database() as db:
+        if short and re.fullmatch(r"[0-9]{6}", key):
+            with_number = db.execute("SELECT report FROM report_numbers WHERE number=?",
+                                     (int(short[1]),)).fetchone()
+            if with_number:
+                report = with_number["report"]
+                limit("receipt:" + report, 8)
+                found = db.execute("SELECT id FROM reports WHERE id=? AND tracking=?",
+                                   (report, digest(f"pin:{report}:{key}"))).fetchone()
+                if found:
+                    return report
+        elif re.fullmatch(r"[A-F0-9]{32}", reference) and len(key) >= 16:
+            found = db.execute("SELECT id FROM reports WHERE id=? AND tracking=?",
+                               (reference.lower(), digest("tracking:" + key))).fetchone()
+            if found:
+                return found["id"]
+    raise Problem("404 Not Found", "Número de reclamo o PIN incorrecto.")
 
 def write_api(env, path, headers):
     ip = env.get("REMOTE_ADDR", "unknown")
@@ -298,11 +327,10 @@ def write_api(env, path, headers):
         return submit_report(data)
     if path == "/api/track":
         limit("track:" + ip, 40)
+        report = resolve_receipt(data)
         with database() as db:
-            report = field(data, "id", 32, 32)
-            key = digest("tracking:" + field(data, "key", 80, 16))
             row = db.execute("""SELECT id, status, visibility, official_ref, official_agency FROM reports
-                WHERE id=? AND tracking=?""", (report, key)).fetchone()
+                WHERE id=?""", (report,)).fetchone()
             require(row, "Código o clave de seguimiento inválidos.", "404 Not Found")
             result = dict(row)
             result["history"] = [dict(item) for item in db.execute(
@@ -312,12 +340,9 @@ def write_api(env, path, headers):
         require(MANAGEMENT, "La solicitud de gestión todavía no está habilitada.", "503 Service Unavailable")
         limit("management:" + ip, 8)
         require(data.get("consent") is True, "Autorizá la gestión para enviar la solicitud.")
-        report = field(data, "id", 32, 32)
-        key = digest("tracking:" + field(data, "key", 80, 16))
         address = email(data)
+        report = resolve_receipt(data)
         with database() as db:
-            require(db.execute("SELECT 1 FROM reports WHERE id=? AND tracking=?", (report, key)).fetchone(),
-                    "Identificador o clave de seguimiento inválidos.", "404 Not Found")
             saved = db.execute("""INSERT INTO management_requests (report,created,email) VALUES (?,?,?)
                 ON CONFLICT DO NOTHING""", (report, int(time.time()), address)).rowcount == 1
         return {"saved": saved}

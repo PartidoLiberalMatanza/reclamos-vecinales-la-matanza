@@ -70,8 +70,8 @@ body{font-size:13.5px;line-height:1.43;background:linear-gradient(155deg,#f7faff
 <p class="subtle">Registrá el reclamo y usá los datos de su comprobante para solicitar la gestión.</p>
 <button id="rv-request-management" type="button" class="btn" aria-controls="rv-management-form" aria-expanded="false">Solicitar nuestra gestión</button>
 <form id="rv-management-form" class="rv-form" hidden>
-<label>Identificador del reclamo <input name="id" minlength="32" maxlength="32" required></label>
-<label>Clave privada del comprobante <input name="key" type="password" maxlength="80" required></label>
+<label>Número de reclamo <input name="id" placeholder="MZ-0001" maxlength="32" required></label>
+<label>PIN del comprobante <input name="key" type="password" maxlength="80" required></label>
 <label>Correo de contacto <input name="email" type="email" maxlength="180" required></label>
 <label class="check"><input name="consent" type="checkbox" required> Autorizo a la organización a contactarme y gestionar este reclamo.</label>
 <p id="rv-management-privacy" class="hint"></p>
@@ -103,10 +103,10 @@ body{font-size:13.5px;line-height:1.43;background:linear-gradient(155deg,#f7faff
 </div></section>
 <section class="page" id="page-ficha"><article id="rv-detail" class="panel" aria-live="polite"></article></section>
 <section class="page" id="page-seguimiento">
-<div class="head"><h2>Seguimiento de reclamo</h2><p>Ingresá el identificador y la clave privada de tu comprobante.</p></div>
+<div class="head"><h2>Seguimiento de reclamo</h2><p>Ingresá el número de reclamo y el PIN que figuran en tu comprobante.</p></div>
 <form id="rv-track" class="panel rv-form">
-<label>Identificador <input name="id" maxlength="32" required></label>
-<label>Clave privada <input name="key" type="password" maxlength="80" required></label>
+<label>Número de reclamo <input name="id" placeholder="MZ-0001" maxlength="32" required></label>
+<label>PIN <input name="key" type="password" maxlength="80" required></label>
 <div><button class="btn primary">Consultar</button></div><p class="rv-note" role="status"></p>
 </form></section>
 <section class="page" id="page-admin">
@@ -204,7 +204,7 @@ function updateDraftIdentifier() {
         if (!registeredReceipt || draftSignature !== registeredReceipt.signature) continue;
         const id = document.createElement('p');
         id.className = 'draft-report-id';
-        id.textContent = 'Identificador vecinal: ' + registeredReceipt.id;
+        id.textContent = 'Número de reclamo vecinal: ' + registeredReceipt.id;
         container.querySelector('h2')?.after(id);
     }
 }

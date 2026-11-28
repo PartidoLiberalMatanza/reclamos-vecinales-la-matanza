@@ -139,17 +139,16 @@ async function submitReport() {
             name: value("rv-name"), email: value("rv-email"), consent: byId("rv-consent").checked,
             photos: await Promise.all(files.map(readFile))
         });
-        registeredReceipt = {id: result.id, signature};
+        registeredReceipt = {id: result.reference, signature};
         updateDraftIdentifier();
-        const summary = "Identificador: " + result.id + "\nClave privada: " + result.key;
-        output.textContent = "Reclamo registrado. Guardá el comprobante para consultar el trámite.\n" + summary;
+        const summary = "Número de reclamo: " + result.reference + "\nPIN: " + result.key;
         const printReceipt = button("Imprimir / guardar comprobante privado");
         printReceipt.onclick = () => {
             byId("print-receipt").replaceChildren(
                 element("h2", "Comprobante privado · Reclamos Vecinales"),
                 element("p", "Guardá estos datos para consultar el estado desde Seguimiento."),
                 element("p", summary, "rv-note"),
-                element("p", "Uso personal. La clave privada permite consultar el reclamo.")
+                element("p", "Uso personal. El PIN permite consultar el reclamo.")
             );
             document.body.classList.add("print-receipt");
             try {
@@ -159,10 +158,33 @@ async function submitReport() {
                 byId("print-receipt").replaceChildren();
             }
         };
-        output.append(document.createElement("br"), printReceipt, link("seguimiento", "Ir a seguimiento"));
+        const copy = button("Copiar número y PIN");
+        copy.onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(summary);
+                copy.textContent = "Copiado";
+            } catch {
+                const range = document.createRange();
+                range.selectNodeContents(credentials);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+                copy.textContent = "Datos seleccionados. Presioná Ctrl+C";
+            }
+        };
+        output.textContent = "Reclamo registrado. Guardá el comprobante para consultar el trámite.";
+        const credentials = element("p", summary, "rv-note");
+        const tracking = button("Ir a seguimiento");
+        tracking.onclick = () => {
+            const form = byId("rv-track");
+            form.elements.id.value = result.reference;
+            form.elements.key.value = result.key;
+            go("seguimiento");
+        };
+        output.append(credentials, copy, printReceipt, tracking);
         const management = byId("rv-management-form");
         management.reset();
-        management.elements.id.value = result.id;
+        management.elements.id.value = result.reference;
         management.elements.key.value = result.key;
         management.querySelector('[role="status"]').textContent = "";
         const request = button("Solicitar nuestra gestión");
@@ -295,7 +317,7 @@ function moderationForm(report) {
     const status = element("p");
     status.setAttribute("role", "status");
     const identity = element("p", report.email ? "Contacto privado: " + report.name + " · " + report.email : "Sin contacto privado");
-    form.append(element("h3", reportTitle), element("p", report.id, "hint"), identity,
+    form.append(element("h3", reportTitle), element("p", report.reference || report.id, "hint"), identity,
         field("Referencia pública", "place", report.place),
         field("Descripción pública", "description", report.description, "textarea"), photos,
         field("Visibilidad", "visibility", report.visibility, "select", Object.entries(labels)),
@@ -373,7 +395,7 @@ async function admin(version = routeVersion) {
                     row.append(element("p", error.message));
                 }
             };
-            row.append(element("p", item.report + " · " + item.email), done, remove);
+            row.append(element("p", (item.reference || item.report) + " · " + item.email), done, remove);
             output.append(row);
         }
         output.append(element("h3", "Solicitudes de Sumate", "section-title"));

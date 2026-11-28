@@ -79,11 +79,14 @@ class PlatformTest(unittest.TestCase):
         with Image.open(io.BytesIO(image_bytes)) as sanitized:
             self.assertFalse(sanitized.getexif())
         call("track", {"id": report["id"], "key": "incorrecta-123456789"}, expected=404)
-        track, _ = call("track", report)
+        self.assertEqual(report["reference"], "MZ-0001")
+        self.assertEqual(anonymous["reference"], "MZ-0002")
+        self.assertRegex(report["key"], r"^[0-9]{6}$")
+        track, _ = call("track", {"id": "mz1", "key": report["key"]})
         self.assertEqual(track["history"][0]["ref"], review["ref"])
 
-        management = {**report, "email": "gestion@example.com", "consent": True}
-        call("management", {**management, "key": "incorrecta-123456789"}, expected=404)
+        management = {**report, "id": report["reference"], "email": "gestion@example.com", "consent": True}
+        call("management", {**management, "key": "000000" if report["key"] != "000000" else "000001"}, expected=404)
         call("management", {**management, "consent": False}, expected=400)
         self.assertTrue(call("management", management)[0]["saved"])
         self.assertFalse(call("management", management)[0]["saved"])
