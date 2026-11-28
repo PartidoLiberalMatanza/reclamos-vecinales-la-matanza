@@ -139,9 +139,10 @@ async function submitReport() {
             name: value("rv-name"), email: value("rv-email"), consent: byId("rv-consent").checked,
             photos: await Promise.all(files.map(readFile))
         });
-        registeredReceipt = {id: result.reference, signature};
+        const reference = result.reference || result.id;
+        registeredReceipt = {id: reference, signature};
         updateDraftIdentifier();
-        const summary = "Número de reclamo: " + result.reference + "\nPIN: " + result.key;
+        const summary = "Número de reclamo: " + reference + (result.reference ? "\nPIN: " : "\nClave privada: ") + result.key;
         const printReceipt = button("Imprimir / guardar comprobante privado");
         printReceipt.onclick = () => {
             byId("print-receipt").replaceChildren(
@@ -177,14 +178,14 @@ async function submitReport() {
         const tracking = button("Ir a seguimiento");
         tracking.onclick = () => {
             const form = byId("rv-track");
-            form.elements.id.value = result.reference;
+            form.elements.id.value = reference;
             form.elements.key.value = result.key;
             go("seguimiento");
         };
         output.append(credentials, copy, printReceipt, tracking);
         const management = byId("rv-management-form");
         management.reset();
-        management.elements.id.value = result.reference;
+        management.elements.id.value = reference;
         management.elements.key.value = result.key;
         management.querySelector('[role="status"]').textContent = "";
         const request = button("Solicitar nuestra gestión");
