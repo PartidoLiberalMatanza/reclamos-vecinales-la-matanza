@@ -510,9 +510,13 @@ onForm(byId("rv-track"), async data => {
         new Date(item.created * 1000).toLocaleDateString("es-AR") + " · " + item.status +
         (item.ref ? " · " + item.agency + " · " + item.ref : "")
     );
-    return [labels[result.visibility], result.status,
-        result.official_ref ? result.official_agency + " · Expediente " + result.official_ref :
-            "Sin expediente oficial registrado.", ...history].join("\n");
+    const message = result.visibility === "pending"
+        ? "Recibimos tu reclamo. Está pendiente de revisión por nuestro equipo."
+        : "Recibimos tu reclamo. Podés consultar su estado en esta página.";
+    const reference = result.official_ref
+        ? result.official_agency + " · Expediente " + result.official_ref
+        : "Si se registra un número de expediente, lo vas a ver acá.";
+    return [message, "Estado del reclamo: " + result.status, reference, ...history].join("\n");
 });
 onForm(byId("rv-login"), async (data, form) => {
     await api("admin/login", data);
