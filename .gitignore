@@ -1,0 +1,5 @@
+/private-data/
+__pycache__/
+.venv/
+.env
+*.sqlite3*
