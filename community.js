@@ -125,8 +125,9 @@ function readFile(file) {
 async function submitReport() {
     const report = byId("form");
     if (!report.reportValidity()) return;
-    const button = byId("rv-submit");
-    button.disabled = true;
+    const submitButton = byId("rv-submit");
+    const signature = reportDraftSignature();
+    submitButton.disabled = true;
     const output = byId("rv-receipt");
     output.textContent = "Enviando…";
     try {
@@ -138,9 +139,27 @@ async function submitReport() {
             name: value("rv-name"), email: value("rv-email"), consent: byId("rv-consent").checked,
             photos: await Promise.all(files.map(readFile))
         });
-        output.textContent = "Recibido. Guardá estos datos para consultar el trámite.\nIdentificador: " +
-            result.id + "\nClave privada: " + result.key;
-        output.append(document.createElement("br"), link("seguimiento", "Ir a seguimiento"));
+        registeredReceipt = {id: result.id, signature};
+        updateDraftIdentifier();
+        const summary = "Identificador: " + result.id + "\nClave privada: " + result.key;
+        output.textContent = "Reclamo registrado. Guardá el comprobante para consultar el trámite.\n" + summary;
+        const printReceipt = button("Imprimir / guardar comprobante privado");
+        printReceipt.onclick = () => {
+            byId("print-receipt").replaceChildren(
+                element("h2", "Comprobante privado · Reclamos Vecinales"),
+                element("p", "Guardá estos datos para consultar el estado desde Seguimiento."),
+                element("p", summary, "rv-note"),
+                element("p", "Uso personal. La clave privada permite consultar el reclamo.")
+            );
+            document.body.classList.add("print-receipt");
+            try {
+                window.print();
+            } finally {
+                document.body.classList.remove("print-receipt");
+                byId("print-receipt").replaceChildren();
+            }
+        };
+        output.append(document.createElement("br"), printReceipt, link("seguimiento", "Ir a seguimiento"));
         const management = byId("rv-management-form");
         management.reset();
         management.elements.id.value = result.id;
@@ -155,7 +174,7 @@ async function submitReport() {
     } catch (error) {
         output.textContent = error.message;
     } finally {
-        button.disabled = false;
+        submitButton.disabled = false;
     }
 }
 
